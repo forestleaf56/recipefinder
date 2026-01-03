@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RecipeFinder 🥕</title>
+    <style>
+        :root {
+            --primary: #d35400;
+            --bg: #fdf6e3;
+            --card-bg: #ffffff;
+            --text: #2c3e50;
+            --badge: #27ae60;
+        }
+
+        body {
+            font-family: 'Georgia', serif;
+            background-color: var(--bg);
+            color: var(--text);
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        header {
+            text-align: center;
+            padding: 30px 20px;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            color: var(--primary);
+            margin: 0 0 10px 0;
+        }
+
+        p.subtitle {
+            font-style: italic;
+            color: #7f8c8d;
+            font-size: 1rem;
+            margin: 0;
+        }
+
+        .search-container {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            width: 90%;
+            max-width: 600px;
+            margin-bottom: 30px;
+        }
+
+        input {
+            padding: 15px;
+            font-size: 1rem;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            outline: none;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        input:focus {
+            border-color: var(--primary);
+        }
+
+        button {
+            padding: 15px;
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 1.1rem;
+            cursor: pointer;
+            font-weight: bold;
+            width: 100%;
+            transition: background 0.2s;
+        }
+
+        button:hover {
+            background-color: #a04000;
+        }
+
+        #results {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 20px;
+            width: 90%;
+            max-width: 1200px;
+            padding-bottom: 50px;
+        }
+
+        .recipe-card {
+            background: var(--card-bg);
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            display: flex;
+            flex-direction: column;
+            position: relative;
+        }
+
+        .recipe-card img {
+            width: 100%;
+            height: 200px;
+            object-fit: cover;
+        }
+
+        /* Badge for multi-ingredient matches */
+        .match-badge {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background-color: var(--badge);
+            color: white;
+            padding: 5px 10px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: bold;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            font-family: sans-serif;
+        }
+
+        .card-content {
+            padding: 20px;
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        .recipe-title {
+            font-size: 1.2rem;
+            margin: 0 0 15px 0;
+            font-weight: bold;
+        }
+
+        .view-btn {
+            display: block;
+            text-align: center;
+            text-decoration: none;
+            background-color: #fcece0;
+            color: var(--primary);
+            padding: 12px;
+            border-radius: 8px;
+            font-weight: bold;
+        }
+
+        .view-btn:hover {
+            background-color: #fadbd8;
+        }
+
+        .error-msg {
+            text-align: center;
+            font-size: 1.1rem;
+            color: #c0392b;
+            margin-top: 20px;
+            padding: 0 10px;
+        }
+
+        @media (min-width: 600px) {
+            .search-container {
+                flex-direction: row;
+            }
+            button {
+                width: auto;
+                padding: 15px 30px;
+            }
+            h1 {
+                font-size: 3rem;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>RecipeFinder</h1>
+        <p class="subtitle">Enter ingredients separated by commas 🥣</p>
+    </header>
+
+    <div class="search-container">
+        <input type="text" id="ingredientInput" placeholder="e.g. chicken, potato, garlic...">
+        <button onclick="findRecipes()">Cook!</button>
+    </div>
+
+    <div id="results"></div>
+
+    <script>
+        async function findRecipes() {
+            const input = document.getElementById('ingredientInput').value.trim();
+            const resultsDiv = document.getElementById('results');
+            
+            if (!input) {
+                resultsDiv.innerHTML = '<p class="error-msg">Please enter some ingredients! 🍋</p>';
+                return;
+            }
+
+            resultsDiv.innerHTML = '<p style="text-align:center; width:100%;">Rummaging through the kitchen...</p>';
+
+            // 1. Split input by comma to get list of ingredients
+            const ingredients = input.split(',').map(i => i.trim()).filter(i => i);
+
+            try {
+                // 2. Fetch recipes for EACH ingredient separately
+                // We use Promise.all to do them all at the same time (faster!)
+                const fetchPromises = ingredients.map(ing => 
+                    fetch(`https://www.themealdb.com/api/json/v1/1/filter.php?i=${ing}`)
+                        .then(res => res.json())
+                        .then(data => data.meals || [])
+                );
+
+                const resultsArray = await Promise.all(fetchPromises);
+
+                // 3. Process the results to find matches
+                // We want to count how many times each recipe appears
+                const recipeCounts = {};
+                const recipeDetails = {};
+
+                resultsArray.forEach(list => {
+                    list.forEach(meal => {
+                        // Count occurrences
+                        recipeCounts[meal.idMeal] = (recipeCounts[meal.idMeal] || 0) + 1;
+                        // Save details so we can display it later
+                        recipeDetails[meal.idMeal] = meal;
+                    });
+                });
+
+                // 4. Convert to an array and sort
+                // Recipes that appear in MORE lists go to the top
+                const sortedRecipes = Object.keys(recipeCounts).map(id => {
+                    return {
+                        ...recipeDetails[id],
+                        matchCount: recipeCounts[id]
+                    };
+                }).sort((a, b) => b.matchCount - a.matchCount); // Highest match count first
+
+                // 5. Display
+                resultsDiv.innerHTML = '';
+
+                if (sortedRecipes.length > 0) {
+                    sortedRecipes.forEach(meal => {
+                        const card = document.createElement('div');
+                        card.className = 'recipe-card';
+                        
+                        // Check if it matches ALL ingredients entered
+                        const isPerfectMatch = meal.matchCount === ingredients.length && ingredients.length > 1;
+                        
+                        let badgeHTML = '';
+                        if (isPerfectMatch) {
+                            badgeHTML = `<div class="match-badge">🌟 Perfect Match</div>`;
+                        } else if (meal.matchCount > 1) {
+                            badgeHTML = `<div class="match-badge">Matches ${meal.matchCount} items</div>`;
+                        }
+
+                        let title = meal.strMeal;
+                        if (title.length > 40) title = title.substring(0, 40) + '...';
+
+                        card.innerHTML = `
+                            ${badgeHTML}
+                            <img src="${meal.strMealThumb}" alt="${meal.strMeal}">
+                            <div class="card-content">
+                                <div class="recipe-title">${title}</div>
+                                <a href="https://www.themealdb.com/meal/${meal.idMeal}" target="_blank" class="view-btn">View Recipe ↗</a>
+                            </div>
+                        `;
+                        resultsDiv.appendChild(card);
+                    });
+                } else {
+                    resultsDiv.innerHTML = '<p class="error-msg">No recipes found. Try using simpler ingredients like "chicken" or "egg". 🥣</p>';
+                }
+
+            } catch (error) {
+                console.error(error);
+                resultsDiv.innerHTML = '<p class="error-msg">Oops! Something went wrong. 😔</p>';
+            }
+        }
+
+        document.getElementById('ingredientInput').addEventListener('keypress', function (e) {
+            if (e.key === 'Enter') findRecipes();
+        });
+    </script>
+
+</body>
+</html>
